@@ -11,7 +11,7 @@ app.use(express.json());
 
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.o19wwr0.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -33,6 +33,7 @@ async function run() {
     const menuCollection = client.db("bistroDb").collection("menu")
     const reviewCollection = client.db("bistroDb").collection("reviews")
     const cartCollection = client.db("bistroDb").collection("carts")
+    const usersCollection = client.db("bistroDb").collection("users")
 
     app.get('/menu', async(req,res)=>{
         const result = await menuCollection.find().toArray()
@@ -52,8 +53,30 @@ async function run() {
     })
 
     app.get('/carts', async(req,res)=>{
-      const result = await cartCollection.find().toArray()
+      const email = req.query.email;
+      const query = {email: email}
+      const result = await cartCollection.find(query).toArray()
       res.send(result)
+  })
+
+  app.delete('/carts/:id', async(req, res)=>{
+    const id = req.params.id;
+    const query = {_id: new ObjectId(id)}
+    const result = await cartCollection.deleteOne(query)
+    res.send(result);
+  })
+
+
+  // users related apis 
+  app.post('/users', async(req, res)=>{
+    const user = req.body;
+    const query = {email: user.email}
+    const existingUser = await usersCollection.findOne(query);
+    if(existingUser){
+      return res.send({message: 'user already exists', insertedId: null})
+    }
+    const result = usersCollection.insertOne(user)
+    res.send(result)
   })
 
 
