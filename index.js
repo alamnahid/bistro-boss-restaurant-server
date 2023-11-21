@@ -10,9 +10,9 @@ const port = process.env.PORT || 5000;
 //middleware
 app.use(cors({
   origin: [
-      'http://localhost:5173',
-      // 'https://onebistroboss.web.app',
-      // 'https://onebistroboss.firebaseapp.com'
+      // 'http://localhost:5173',
+      'https://onebistroboss.web.app',
+      'https://onebistroboss.firebaseapp.com'
   ],
   credentials: true
 }));
@@ -194,6 +194,71 @@ async function run() {
       }
       const result = await paymentCollection.find(query).toArray();
       res.send(result);
+    })
+
+    // states or analytics
+    app.get('/admin-stats', verifyToken, verifyAdmin, async(req, res)=>{
+      const users = await usersCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+
+      // calculate revenue
+      // const payments = await paymentCollection.find().toArray();
+      // const revenue = payments.reduce((total, payment)=>total+payment.price, 0);
+
+      const result = await paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray()
+
+      const revenue = result.length>0 ? result[0].totalRevenue : 0;
+
+      res.send({users, menuItems, orders, revenue})
+    })
+
+
+    // using aggregate pipeline
+    app.get('/order-stats', verifyToken, verifyAdmin, async(req, res) =>{
+      const result = await paymentCollection.aggregate([
+        {
+          $unwind: '$menuItemIds'
+        },
+        {
+          $lookup: {
+            from: 'menu',
+            localField: 'menuItemIds',
+            foreignField: '_id',
+            as: 'menuItems'
+          }
+        },
+        {
+          $unwind: '$menuItems'
+        },
+        {
+          $group: {
+            _id: '$menuItems.category',
+            quantity:{ $sum: 1 },
+            revenue: { $sum: '$menuItems.price'} 
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            category: '$_id',
+            quantity: '$quantity',
+            revenue: '$revenue'
+          }
+        }
+      ]).toArray();
+
+      res.send(result);
+
     })
 
 
