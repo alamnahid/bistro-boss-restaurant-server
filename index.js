@@ -4,15 +4,24 @@ const cors = require('cors')
 const jwt = require('jsonwebtoken');
 require('dotenv').config()
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+const formData = require('form-data');
+const Mailgun = require('mailgun.js');
+const mailgun = new Mailgun(formData);
+const mg = mailgun.client({
+  username: 'api',
+  key: process.env.MAIL_GUN_API_KEY,
+});
+
+
 const port = process.env.PORT || 5000;
 
 
 //middleware
 app.use(cors({
   origin: [
-      // 'http://localhost:5173',
-      'https://onebistroboss.web.app',
-      'https://onebistroboss.firebaseapp.com'
+    'http://localhost:5173',
+    // 'https://onebistroboss.web.app',
+    // 'https://onebistroboss.firebaseapp.com'
   ],
   credentials: true
 }));
@@ -80,7 +89,7 @@ async function run() {
         return res.status(403).send({ message: 'forbidden access' });
       }
       next();
-    }  
+    }
 
 
     app.get('/menu', async (req, res) => {
@@ -93,26 +102,26 @@ async function run() {
       const query = { _id: new ObjectId(id) }
       const food = await menuCollection.findOne(query)
       res.send(food)
-  })
+    })
 
-  app.patch('/menu/:id', async (req, res) => {
-    const item = req.body;
-    const id = req.params.id;
-    const filter = { _id: new ObjectId(id) }
-    const updatedDoc = {
-      $set: {
-        name: item.name,
-        category: item.category,
-        price: item.price,
-        recipe: item.recipe,
-        image: item.image
+    app.patch('/menu/:id', async (req, res) => {
+      const item = req.body;
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) }
+      const updatedDoc = {
+        $set: {
+          name: item.name,
+          category: item.category,
+          price: item.price,
+          recipe: item.recipe,
+          image: item.image
+        }
       }
-    }
 
-    const result = await menuCollection.updateOne(filter, updatedDoc)
-    res.send(result);
-  })
-    app.post('/menu',verifyToken, verifyAdmin, async(req, res)=>{
+      const result = await menuCollection.updateOne(filter, updatedDoc)
+      res.send(result);
+    })
+    app.post('/menu', verifyToken, verifyAdmin, async (req, res) => {
       const item = req.body;
       const result = await menuCollection.insertOne(item);
       res.send(result)
@@ -184,6 +193,23 @@ async function run() {
 
       const deleteResult = await cartCollection.deleteMany(query);
 
+      // send user email about his payment confirmation
+      mg.messages
+        .create(process.env.MAIL_SENDING_DOMAIN, {
+          from: "Mailgun Sandbox <postmaster@sandbox7563aeb42c544577871f79f5808f590b.mailgun.org>",
+          to: ["nahidalam13765@gmail.com"],
+          subject: "Bistro Boss Order Confirmation",
+          text: "Testing some Mailgun awesomness!",
+          html: `
+          <div>
+          <h2>Thank you for your order</h2>
+          <h4>Your Transaction Id: <strong>${payment.transactionId}</strong></h4>
+          
+          </div>`
+        })
+        .then(msg => console.log(msg)) // logs response data
+        .catch(err => console.log(err)); // logs any error`;
+
       res.send({ paymentResult, deleteResult });
     })
 
@@ -197,7 +223,7 @@ async function run() {
     })
 
     // states or analytics
-    app.get('/admin-stats', verifyToken, verifyAdmin, async(req, res)=>{
+    app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
       const users = await usersCollection.estimatedDocumentCount();
       const menuItems = await menuCollection.estimatedDocumentCount();
       const orders = await paymentCollection.estimatedDocumentCount();
@@ -217,14 +243,14 @@ async function run() {
         }
       ]).toArray()
 
-      const revenue = result.length>0 ? result[0].totalRevenue : 0;
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
 
-      res.send({users, menuItems, orders, revenue})
+      res.send({ users, menuItems, orders, revenue })
     })
 
 
     // using aggregate pipeline
-    app.get('/order-stats', verifyToken, verifyAdmin, async(req, res) =>{
+    app.get('/order-stats', verifyToken, verifyAdmin, async (req, res) => {
       const result = await paymentCollection.aggregate([
         {
           $unwind: '$menuItemIds'
@@ -243,8 +269,8 @@ async function run() {
         {
           $group: {
             _id: '$menuItems.category',
-            quantity:{ $sum: 1 },
-            revenue: { $sum: '$menuItems.price'} 
+            quantity: { $sum: 1 },
+            revenue: { $sum: '$menuItems.price' }
           }
         },
         {
@@ -303,9 +329,9 @@ async function run() {
       res.send(result);
     })
 
-    app.patch('/users/admin/:id', verifyToken,verifyAdmin, async(req, res)=>{
-      const id= req.params.id;
-      const filter = {_id: new ObjectId(id)}
+    app.patch('/users/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) }
       const updatedDoc = {
         $set: {
           role: 'admin'
@@ -318,7 +344,7 @@ async function run() {
 
 
     // conatct message apis
-    app.post('/contact', async(req, res)=>{
+    app.post('/contact', async (req, res) => {
       const item = req.body;
       const result = await contactCollection.insertOne(item);
       res.send(result)
